@@ -1,20 +1,15 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import Any, List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, HttpUrl
 
-
-PARSER_DIR = Path(__file__).resolve().parent / "parser"
-sys.path.append(str(PARSER_DIR))
-
-from src.review_parser.parsers.factory import get_parser_for_url
+from .review_parser import parse_reviews_from_url, parse_reviews_to_dicts
 from .preprocessing.preparer import prepare_reviews_for_llm
 from .llm.analyzer import ReviewHelpfulnessAnalyzer
+
 
 app = FastAPI(
     title="Review Helpfulness System API",
@@ -43,6 +38,7 @@ class ParseReviewsResponse(BaseModel):
     reviews_count: int
     reviews: List[dict[str, Any]]
 
+
 class PrepareReviewsRequest(BaseModel):
     reviews: List[dict[str, Any]]
     include_low_information: bool = True
@@ -52,6 +48,7 @@ class PrepareReviewsResponse(BaseModel):
     input_count: int
     prepared_count: int
     reviews: List[dict[str, Any]]
+
 
 class AnalyzeReviewsRequest(BaseModel):
     reviews: List[dict[str, Any]]
@@ -63,6 +60,7 @@ class AnalyzeReviewsResponse(BaseModel):
     input_count: int
     analyzed_count: int
     reviews: List[dict[str, Any]]
+
 
 @app.get("/")
 def root() -> dict[str, str]:
@@ -76,30 +74,30 @@ def parse_reviews(request: ParseReviewsRequest) -> ParseReviewsResponse:
     url = str(request.url)
 
     try:
-        parser = get_parser_for_url(url)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No parser available for this URL: {url}",
-        ) from exc
-
-    try:
-        reviews = parser.parse(
+        reviews = parse_reviews_to_dicts(
             url=url,
             max_pages=request.max_pages,
         )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to parse reviews: {str(exc)}",
         ) from exc
 
+    store = reviews[0].get("store", "unknown") if reviews else "unknown"
+
     return ParseReviewsResponse(
-        store=parser.store_name,
+        store=store,
         url=url,
         reviews_count=len(reviews),
-        reviews=[review.to_dict() for review in reviews],
+        reviews=reviews,
     )
+
 
 @app.post("/api/reviews/prepare", response_model=PrepareReviewsResponse)
 def prepare_reviews(request: PrepareReviewsRequest) -> PrepareReviewsResponse:
@@ -114,44 +112,43 @@ def prepare_reviews(request: PrepareReviewsRequest) -> PrepareReviewsResponse:
         reviews=prepared_reviews,
     )
 
+
 @app.post("/api/reviews/parse-and-prepare")
 def parse_and_prepare_reviews(request: ParseReviewsRequest) -> dict[str, Any]:
     url = str(request.url)
 
     try:
-        parser = get_parser_for_url(url)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No parser available for this URL: {url}",
-        ) from exc
-
-    try:
-        raw_reviews = parser.parse(
+        raw_reviews = parse_reviews_to_dicts(
             url=url,
             max_pages=request.max_pages,
         )
 
-        raw_reviews_dicts = [review.to_dict() for review in raw_reviews]
-
         prepared_reviews = prepare_reviews_for_llm(
-            reviews=raw_reviews_dicts,
+            reviews=raw_reviews,
             include_low_information=True,
         )
 
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to parse and prepare reviews: {str(exc)}",
         ) from exc
 
+    store = raw_reviews[0].get("store", "unknown") if raw_reviews else "unknown"
+
     return {
-        "store": parser.store_name,
+        "store": store,
         "url": url,
-        "raw_reviews_count": len(raw_reviews_dicts),
+        "raw_reviews_count": len(raw_reviews),
         "prepared_reviews_count": len(prepared_reviews),
         "reviews": prepared_reviews,
     }
+
 
 @app.post("/api/reviews/analyze", response_model=AnalyzeReviewsResponse)
 def analyze_reviews(request: AnalyzeReviewsRequest) -> AnalyzeReviewsResponse:
@@ -176,22 +173,19 @@ def analyze_reviews(request: AnalyzeReviewsRequest) -> AnalyzeReviewsResponse:
             detail=f"Failed to analyze reviews with LLM: {str(exc)}",
         ) from exc
 
+
 @app.post("/api/reviews/parse-prepare-analyze")
 def parse_prepare_analyze_reviews(request: ParseReviewsRequest) -> dict[str, Any]:
     url = str(request.url)
 
     try:
-        parser = get_parser_for_url(url)
-
-        raw_reviews = parser.parse(
+        raw_reviews = parse_reviews_to_dicts(
             url=url,
             max_pages=request.max_pages,
         )
 
-        raw_reviews_dicts = [review.to_dict() for review in raw_reviews]
-
         prepared_reviews = prepare_reviews_for_llm(
-            reviews=raw_reviews_dicts,
+            reviews=raw_reviews,
             include_low_information=True,
         )
 
@@ -202,17 +196,24 @@ def parse_prepare_analyze_reviews(request: ParseReviewsRequest) -> dict[str, Any
             skip_low_information=True,
         )
 
-        return {
-            "store": parser.store_name,
-            "url": url,
-            "raw_reviews_count": len(raw_reviews_dicts),
-            "prepared_reviews_count": len(prepared_reviews),
-            "analyzed_reviews_count": len(analyzed_reviews),
-            "reviews": analyzed_reviews,
-        }
-
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to parse, prepare and analyze reviews: {str(exc)}",
         ) from exc
+
+    store = raw_reviews[0].get("store", "unknown") if raw_reviews else "unknown"
+
+    return {
+        "store": store,
+        "url": url,
+        "raw_reviews_count": len(raw_reviews),
+        "prepared_reviews_count": len(prepared_reviews),
+        "analyzed_reviews_count": len(analyzed_reviews),
+        "reviews": analyzed_reviews,
+    }
