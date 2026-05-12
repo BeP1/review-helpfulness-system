@@ -1,0 +1,91 @@
+HELPFULNESS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "helpfulness_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Overall usefulness of the review for a potential buyer.",
+        },
+        "specificity_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "How concrete and specific the review is.",
+        },
+        "usage_experience_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Whether the review shows real usage experience.",
+        },
+        "pros_cons_balance_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "Whether the review contains balanced pros and cons.",
+        },
+        "decision_support_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "How much the review helps another user make a purchase decision.",
+        },
+        "spam_risk_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10,
+            "description": "How suspicious, generic, promotional, or spam-like the review seems.",
+        },
+        "category": {
+            "type": "string",
+            "enum": [
+                "product_quality",
+                "delivery_service",
+                "price_value",
+                "usability",
+                "durability",
+                "compatibility",
+                "customer_service",
+                "general_impression",
+                "low_information",
+                "other",
+            ],
+        },
+        "sentiment": {
+            "type": "string",
+            "enum": [
+                "positive",
+                "negative",
+                "mixed",
+                "neutral",
+            ],
+        },
+        "is_helpful": {
+            "type": "boolean",
+            "description": "True if the review is practically useful for buyers.",
+        },
+        "summary": {
+            "type": "string",
+            "description": "Very short summary of the review content.",
+        },
+        "explanation": {
+            "type": "string",
+            "description": "Brief explanation of why this helpfulness score was assigned.",
+        },
+    },
+    "required": [
+        "helpfulness_score",
+        "specificity_score",
+        "usage_experience_score",
+        "pros_cons_balance_score",
+        "decision_support_score",
+        "spam_risk_score",
+        "category",
+        "sentiment",
+        "is_helpful",
+        "summary",
+        "explanation",
+    ],
+    "additionalProperties": False,
+}
