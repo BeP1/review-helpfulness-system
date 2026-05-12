@@ -13,7 +13,7 @@ PARSER_DIR = Path(__file__).resolve().parent / "parser"
 sys.path.append(str(PARSER_DIR))
 
 from src.review_parser.parsers.factory import get_parser_for_url
-from .preprocessing.review_preprocessor import prepare_reviews_for_llm
+from .preprocessing.preparer import prepare_reviews_for_llm
 from .llm.analyzer import ReviewHelpfulnessAnalyzer
 
 app = FastAPI(
@@ -25,7 +25,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # later replace with your frontend URL
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
