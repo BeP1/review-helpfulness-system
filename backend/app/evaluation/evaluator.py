@@ -128,12 +128,6 @@ def _build_text_for_evaluation(
     elif review.text:
         parts.append(review.text)
 
-    if review.pros:
-        parts.append(f"Переваги: {review.pros}")
-
-    if review.cons:
-        parts.append(f"Недоліки: {review.cons}")
-
     return " ".join(
         part.strip()
         for part in parts
