@@ -1,71 +1,56 @@
 from typing import Any
 
-from .interfaces import AuthenticityAnalyzer
-from .schemas import ReviewEvaluationInput, ReviewEvaluationResult
+from pydantic import ValidationError
+
+from .schemas import (
+    LLMHelpfulnessAnalysis,
+    ReviewEvaluationInput,
+    ReviewEvaluationResult,
+)
 from .scoring import (
-    build_usefulness_features,
-    calculate_usefulness_score,
+    build_features_from_llm,
+    calculate_usefulness_score_from_llm,
+    determine_is_helpful,
     determine_usefulness_category,
-    is_helpful_review,
 )
 
 
 def evaluate_review(
     review: ReviewEvaluationInput,
-    authenticity_analyzer: AuthenticityAnalyzer | None = None,
 ) -> ReviewEvaluationResult:
     text = _build_text_for_evaluation(review)
 
-    features = build_usefulness_features(
-        text=text,
-        pros=review.pros,
-        cons=review.cons,
-        rating=review.rating,
-        analysis=review.analysis,
+    llm_analysis = _extract_llm_analysis(review.analysis)
+
+    features = build_features_from_llm(llm_analysis)
+
+    usefulness_score = calculate_usefulness_score_from_llm(llm_analysis)
+
+    usefulness_category = determine_usefulness_category(usefulness_score)
+
+    is_helpful = determine_is_helpful(
+        score=usefulness_score,
+        llm_analysis=llm_analysis,
     )
-
-    usefulness_score = calculate_usefulness_score(features)
-    category = determine_usefulness_category(usefulness_score)
-    is_helpful = is_helpful_review(usefulness_score)
-
-    summary = _extract_optional_string(
-        review.analysis,
-        keys=["summary", "short_summary"],
-    )
-
-    explanation = _extract_optional_string(
-        review.analysis,
-        keys=["explanation", "reason", "comment"],
-    )
-
-    authenticity = None
-
-    # Зараз це не використовується.
-    # Пізніше сюди можна підключити fake/authenticity module без зміни evaluator.
-    if authenticity_analyzer is not None:
-        authenticity = authenticity_analyzer.analyze(review)
 
     storage_payload = _build_storage_payload(
         review=review,
         text=text,
+        llm_analysis=llm_analysis,
         usefulness_score=usefulness_score,
-        category=category.value,
+        usefulness_category=usefulness_category.value,
         is_helpful=is_helpful,
         features=features.model_dump(),
-        summary=summary,
-        explanation=explanation,
-        authenticity=authenticity,
     )
 
     display_payload = _build_display_payload(
         review=review,
         text=text,
+        llm_analysis=llm_analysis,
         usefulness_score=usefulness_score,
-        category=category.value,
+        usefulness_category=usefulness_category.value,
         is_helpful=is_helpful,
         features=features.model_dump(),
-        summary=summary,
-        explanation=explanation,
     )
 
     return ReviewEvaluationResult(
@@ -77,12 +62,13 @@ def evaluate_review(
         created_at=review.created_at,
         source_url=review.source_url,
         usefulness_score=usefulness_score,
-        category=category,
+        usefulness_category=usefulness_category,
         is_helpful=is_helpful,
+        topic_category=llm_analysis.category,
+        sentiment=llm_analysis.sentiment,
         features=features,
-        summary=summary,
-        explanation=explanation,
-        authenticity=authenticity,
+        summary=llm_analysis.summary,
+        explanation=llm_analysis.explanation,
         storage_payload=storage_payload,
         display_payload=display_payload,
     )
@@ -90,18 +76,51 @@ def evaluate_review(
 
 def evaluate_reviews(
     reviews: list[ReviewEvaluationInput],
-    authenticity_analyzer: AuthenticityAnalyzer | None = None,
 ) -> list[ReviewEvaluationResult]:
     return [
-        evaluate_review(
-            review=review,
-            authenticity_analyzer=authenticity_analyzer,
-        )
+        evaluate_review(review)
         for review in reviews
     ]
 
 
-def _build_text_for_evaluation(review: ReviewEvaluationInput) -> str:
+def _extract_llm_analysis(
+    analysis: dict[str, Any],
+) -> LLMHelpfulnessAnalysis:
+    """
+    Supports two formats:
+
+    1. Nested format:
+       {
+           "llm_analysis": {...}
+       }
+
+    2. Flattened format:
+       {
+           "helpfulness_score": 5,
+           "specificity_score": 2,
+           ...
+       }
+    """
+
+    raw_llm_analysis = analysis.get("llm_analysis")
+
+    if isinstance(raw_llm_analysis, dict):
+        data = raw_llm_analysis
+    else:
+        data = analysis
+
+    try:
+        return LLMHelpfulnessAnalysis.model_validate(data)
+    except ValidationError as exc:
+        raise ValueError(
+            "Evaluation requires a valid llm_analysis object that matches "
+            "HELPFULNESS_SCHEMA."
+        ) from exc
+
+
+def _build_text_for_evaluation(
+    review: ReviewEvaluationInput,
+) -> str:
     parts = []
 
     if review.prepared_text:
@@ -115,19 +134,21 @@ def _build_text_for_evaluation(review: ReviewEvaluationInput) -> str:
     if review.cons:
         parts.append(f"Недоліки: {review.cons}")
 
-    return " ".join(part.strip() for part in parts if part and part.strip())
+    return " ".join(
+        part.strip()
+        for part in parts
+        if part and part.strip()
+    )
 
 
 def _build_storage_payload(
     review: ReviewEvaluationInput,
     text: str,
+    llm_analysis: LLMHelpfulnessAnalysis,
     usefulness_score: int,
-    category: str,
+    usefulness_category: str,
     is_helpful: bool,
     features: dict[str, float],
-    summary: str | None,
-    explanation: str | None,
-    authenticity: dict[str, Any] | None,
 ) -> dict[str, Any]:
     return {
         "review_id": review.review_id,
@@ -137,28 +158,31 @@ def _build_storage_payload(
         "author": review.author,
         "created_at": review.created_at,
         "source_url": review.source_url,
-        "usefulness_score": usefulness_score,
-        "category": category,
-        "is_helpful": is_helpful,
-        "features": features,
-        "summary": summary,
-        "explanation": explanation,
 
-        # Зараз буде None.
-        # Пізніше сюди можна зберігати результат fake/authenticity analysis.
-        "authenticity": authenticity,
+        "usefulness_score": usefulness_score,
+        "usefulness_category": usefulness_category,
+        "is_helpful": is_helpful,
+
+        "topic_category": llm_analysis.category.value,
+        "sentiment": llm_analysis.sentiment.value,
+
+        "features": features,
+
+        "llm_analysis": llm_analysis.model_dump(),
+
+        "summary": llm_analysis.summary,
+        "explanation": llm_analysis.explanation,
     }
 
 
 def _build_display_payload(
     review: ReviewEvaluationInput,
     text: str,
+    llm_analysis: LLMHelpfulnessAnalysis,
     usefulness_score: int,
-    category: str,
+    usefulness_category: str,
     is_helpful: bool,
     features: dict[str, float],
-    summary: str | None,
-    explanation: str | None,
 ) -> dict[str, Any]:
     return {
         "review_id": review.review_id,
@@ -167,25 +191,19 @@ def _build_display_payload(
         "author": review.author,
         "created_at": review.created_at,
         "source_url": review.source_url,
+
         "usefulness": {
             "score": usefulness_score,
-            "category": category,
+            "category": usefulness_category,
             "is_helpful": is_helpful,
             "features": features,
         },
-        "summary": summary,
-        "explanation": explanation,
+
+        "classification": {
+            "topic_category": llm_analysis.category.value,
+            "sentiment": llm_analysis.sentiment.value,
+        },
+
+        "summary": llm_analysis.summary,
+        "explanation": llm_analysis.explanation,
     }
-
-
-def _extract_optional_string(
-    data: dict[str, Any],
-    keys: list[str],
-) -> str | None:
-    for key in keys:
-        value = data.get(key)
-
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-
-    return None

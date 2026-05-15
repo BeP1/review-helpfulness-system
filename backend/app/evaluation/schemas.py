@@ -12,6 +12,42 @@ class UsefulnessCategory(str, Enum):
     NOT_USEFUL = "not_useful"
 
 
+class ReviewTopicCategory(str, Enum):
+    PRODUCT_QUALITY = "product_quality"
+    DELIVERY_SERVICE = "delivery_service"
+    PRICE_VALUE = "price_value"
+    USABILITY = "usability"
+    DURABILITY = "durability"
+    COMPATIBILITY = "compatibility"
+    CUSTOMER_SERVICE = "customer_service"
+    GENERAL_IMPRESSION = "general_impression"
+    LOW_INFORMATION = "low_information"
+    OTHER = "other"
+
+
+class ReviewSentiment(str, Enum):
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    MIXED = "mixed"
+    NEUTRAL = "neutral"
+
+
+class LLMHelpfulnessAnalysis(BaseModel):
+    helpfulness_score: int = Field(ge=0, le=10)
+    specificity_score: int = Field(ge=0, le=10)
+    usage_experience_score: int = Field(ge=0, le=10)
+    pros_cons_balance_score: int = Field(ge=0, le=10)
+    decision_support_score: int = Field(ge=0, le=10)
+    spam_risk_score: int = Field(ge=0, le=10)
+
+    category: ReviewTopicCategory
+    sentiment: ReviewSentiment
+    is_helpful: bool
+
+    summary: str
+    explanation: str
+
+
 class ReviewEvaluationInput(BaseModel):
     review_id: str | None = None
     product_id: str | None = None
@@ -27,17 +63,16 @@ class ReviewEvaluationInput(BaseModel):
     created_at: str | None = None
     source_url: str | None = None
 
-    # сюди можна передати результат LLM-аналізу, якщо він уже є
     analysis: dict[str, Any] = Field(default_factory=dict)
 
 
 class UsefulnessFeatures(BaseModel):
+    llm_helpfulness: float
     specificity: float
     usage_experience: float
     pros_cons_balance: float
     decision_support: float
-    text_quality: float
-    rating_context: float
+    spam_risk: float
 
 
 class ReviewEvaluationResult(BaseModel):
@@ -51,16 +86,16 @@ class ReviewEvaluationResult(BaseModel):
     source_url: str | None
 
     usefulness_score: int
-    category: UsefulnessCategory
+    usefulness_category: UsefulnessCategory
     is_helpful: bool
+
+    topic_category: ReviewTopicCategory
+    sentiment: ReviewSentiment
 
     features: UsefulnessFeatures
 
-    summary: str | None = None
-    explanation: str | None = None
-
-    # зараз не використовується, але залишено як точка розширення
-    authenticity: dict[str, Any] | None = None
+    summary: str
+    explanation: str
 
     storage_payload: dict[str, Any]
     display_payload: dict[str, Any]

@@ -122,11 +122,13 @@ def build_evaluation_input(review: dict[str, Any]) -> ReviewEvaluationInput:
     if isinstance(llm_analysis, dict):
         analysis = {
             **review,
+            "llm_analysis": llm_analysis,
             **llm_analysis,
         }
     elif isinstance(analysis_data, dict):
         analysis = {
             **review,
+            "llm_analysis": analysis_data,
             **analysis_data,
         }
     else:
