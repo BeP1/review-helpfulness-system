@@ -11,7 +11,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d:ro
+      #- ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U review_user -d review_helpfulness"]
       interval: 5s
@@ -23,7 +23,9 @@ services:
     container_name: review_helpfulness_backend
     restart: always
     environment:
-      DATABASE_URL: postgresql://review_user:review_password@db:5432/review_helpfulness
+      DATABASE_URL: postgresql+psycopg://review_user:review_password@db:5432/review_helpfulness
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LLM_MODEL: ${LLM_MODEL}
     depends_on:
       db:
         condition: service_healthy
