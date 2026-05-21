@@ -14,13 +14,11 @@ class ParsePrepareAnalyzeEvaluateResponse(BaseModel):
     store: str
     url: str
     product_id: int | None = None
-
+    product: dict[str, Any] | None = None
     raw_reviews_count: int
     prepared_reviews_count: int
     analyzed_reviews_count: int
     evaluated_reviews_count: int
-
     saved_reviews_count: int
     saved_analyses_count: int
-
     reviews: list[dict[str, Any]]

@@ -58,15 +58,19 @@ def parse_prepare_analyze_evaluate_and_save(
         if review.text_hash
     }
 
-    prepared_reviews = prepare_reviews_for_llm(
+    prepared_payload = prepare_reviews_for_llm(
         reviews=raw_reviews,
         include_low_information=True,
     )
+
+    product_context = prepared_payload["product"]
+    prepared_reviews = prepared_payload["reviews"]
 
     analyzer = ReviewHelpfulnessAnalyzer()
 
     analyzed_reviews = analyzer.analyze_reviews(
         reviews=prepared_reviews,
+        product_context=product_context,
         skip_low_information=True,
     )
 
@@ -123,6 +127,7 @@ def parse_prepare_analyze_evaluate_and_save(
         store=store,
         url=url,
         product_id=product.id,
+        product=product_context,
         raw_reviews_count=len(raw_reviews),
         prepared_reviews_count=len(prepared_reviews),
         analyzed_reviews_count=len(analyzed_reviews),
